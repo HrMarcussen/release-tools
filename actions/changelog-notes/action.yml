@@ -1,0 +1,33 @@
+name: Changelog notes
+description: One version's section of a Keep-a-Changelog CHANGELOG.md, written to a file for the release notes.
+inputs:
+  version:
+    description: The version, e.g. 0.6.2 (a leading v is ignored).
+    required: true
+  changelog:
+    description: Path of the changelog.
+    default: CHANGELOG.md
+outputs:
+  file:
+    description: The file with the notes.
+    value: ${{ steps.notes.outputs.file }}
+runs:
+  using: composite
+  steps:
+    - id: notes
+      shell: pwsh
+      env:
+        VERSION: ${{ inputs.version }}
+        CHANGELOG: ${{ inputs.changelog }}
+      run: |
+        $v = $env:VERSION.Trim().TrimStart('v')
+        $lines = @(Get-Content $env:CHANGELOG -Encoding utf8)
+        $head = $lines | Select-String -Pattern ('^## \[' + [regex]::Escape($v) + '\]') | Select-Object -First 1
+        if (-not $head) { throw "no section '## [$v]' in $env:CHANGELOG" }
+        $rest = if ($head.LineNumber -lt $lines.Count) { $lines[$head.LineNumber..($lines.Count - 1)] } else { @() }
+        $next = $rest | Select-String -Pattern '^## \[' | Select-Object -First 1
+        $body = if ($next) { if ($next.LineNumber -gt 1) { $rest[0..($next.LineNumber - 2)] } else { @() } } else { $rest }
+        $file = Join-Path $env:RUNNER_TEMP "release-notes-$v.md"
+        (($body -join "`n").Trim() + "`n") | Set-Content $file -Encoding utf8 -NoNewline
+        "file=$file" >> $env:GITHUB_OUTPUT
+        Write-Host "notes for $v ($((Get-Item $file).Length) bytes)"

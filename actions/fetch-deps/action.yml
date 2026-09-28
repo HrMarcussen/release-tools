@@ -1,0 +1,46 @@
+name: Fetch private build inputs
+description: >-
+  Copies one project's files from the private build-deps repository (third-party files that must not be in a public
+  repository) into the workspace. Without a token it warns and copies nothing, so a dry run still builds.
+inputs:
+  token:
+    description: A fine-grained token with read access to the contents of the build-deps repository only.
+    required: false
+    default: ''
+  repository:
+    description: The build-deps repository.
+    default: ${{ github.repository_owner }}/build-deps
+  folder:
+    description: The project's folder in it, e.g. GlassLink. Only files directly in it are copied, not subfolders.
+    required: true
+  destination:
+    description: Where to put the files, relative to the workspace.
+    required: true
+runs:
+  using: composite
+  steps:
+    - if: inputs.token == ''
+      shell: pwsh
+      run: Write-Output "::warning title=No build-deps token::nothing fetched from ${{ inputs.repository }}/${{ inputs.folder }}; the build lacks those files"
+    - if: inputs.token != ''
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        token: ${{ inputs.token }}
+        path: .build-deps
+        sparse-checkout: ${{ inputs.folder }}
+        persist-credentials: false
+    - if: inputs.token != ''
+      shell: pwsh
+      env:
+        FOLDER: ${{ inputs.folder }}
+        DEST: ${{ inputs.destination }}
+      run: |
+        $src = Join-Path '.build-deps' $env:FOLDER
+        if (-not (Test-Path $src)) { throw "no folder $env:FOLDER in build-deps" }
+        New-Item -ItemType Directory -Force $env:DEST | Out-Null
+        Get-ChildItem $src -File | ForEach-Object {
+            Copy-Item $_.FullName $env:DEST
+            Write-Host ("{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name)
+        }
+        Remove-Item .build-deps -Recurse -Force

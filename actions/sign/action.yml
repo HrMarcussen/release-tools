@@ -1,0 +1,42 @@
+name: Sign Windows files
+description: >-
+  Authenticode-signs Windows executables and installers. method "none" signs nothing and says so (a pipeline works
+  before a certificate exists); "certum-simplysign" is added once the Certum Open Source certificate is in place.
+inputs:
+  files:
+    description: Files to sign, one per line.
+    required: true
+  method:
+    description: none | certum-simplysign
+    default: none
+  certum-user:
+    description: The SimplySign account (e-mail). From a secret of a protected environment.
+    required: false
+    default: ''
+  certum-otp-secret:
+    description: The SimplySign TOTP secret (base32, from the QR code at activation). From a secret of a protected environment.
+    required: false
+    default: ''
+  timestamp-url:
+    description: RFC 3161 timestamp server.
+    default: http://time.certum.pl
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        FILES: ${{ inputs.files }}
+        METHOD: ${{ inputs.method }}
+      run: |
+        $files = @($env:FILES -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if (-not $files) { throw "no files to sign" }
+        foreach ($f in $files) { if (-not (Test-Path $f)) { throw "not found: $f" } }
+        switch ($env:METHOD) {
+            'none' {
+                foreach ($f in $files) { Write-Output "::warning title=Unsigned::$f is not signed (method none)" }
+            }
+            'certum-simplysign' {
+                throw "certum-simplysign is not implemented yet: it is written and tested once the certificate exists (see README)"
+            }
+            default { throw "unknown signing method '$env:METHOD'" }
+        }

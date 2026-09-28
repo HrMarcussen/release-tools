@@ -1,0 +1,68 @@
+name: Publish a GitHub Release
+description: >-
+  Creates (or updates) the GitHub Release of a tag with the given files, a SHA256SUMS.txt of them, and the notes from
+  a file. Uses the GitHub CLI of the runner.
+inputs:
+  tag:
+    description: The tag, e.g. v0.6.2. It must exist.
+    required: true
+  files:
+    description: Files or wildcard patterns, one per line.
+    required: true
+  notes-file:
+    description: Markdown file with the release notes.
+    required: true
+  title:
+    description: The release title (default "<repository name> <version>").
+    default: ''
+  draft:
+    description: true = a draft, visible only to maintainers until published by hand.
+    default: 'false'
+  prerelease:
+    description: true = marked as a pre-release (not "latest").
+    default: 'false'
+  token:
+    description: A token with contents write permission.
+    default: ${{ github.token }}
+outputs:
+  url:
+    description: The release page.
+    value: ${{ steps.publish.outputs.url }}
+runs:
+  using: composite
+  steps:
+    - id: publish
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        FILES: ${{ inputs.files }}
+        NOTES: ${{ inputs.notes-file }}
+        TITLE: ${{ inputs.title }}
+        DRAFT: ${{ inputs.draft }}
+        PRE: ${{ inputs.prerelease }}
+      run: |
+        $patterns = @($env:FILES -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $files = @($patterns | ForEach-Object { Get-ChildItem $_ -File -ErrorAction SilentlyContinue } | Sort-Object FullName -Unique)
+        if (-not $files) { throw "no files match: $($patterns -join ', ')" }
+        $sums = Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt'
+        ($files | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }) -join "`n" |
+            Set-Content $sums -Encoding ascii
+        Get-Content $sums
+        $assets = @($files.FullName) + $sums
+        $title = if ($env:TITLE) { $env:TITLE } else { "$($env:GH_REPO.Split('/')[1]) $($env:TAG.TrimStart('v'))" }
+        gh release view $env:TAG *> $null
+        if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG @assets --clobber
+            gh release edit $env:TAG --title $title --notes-file $env:NOTES
+        } else {
+            $flags = @()
+            if ($env:DRAFT -eq 'true') { $flags += '--draft' }
+            if ($env:PRE -eq 'true') { $flags += '--prerelease' }
+            gh release create $env:TAG @assets --verify-tag --title $title --notes-file $env:NOTES @flags
+        }
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        $url = gh release view $env:TAG --json url --jq .url
+        "url=$url" >> $env:GITHUB_OUTPUT
+        Write-Host "published $url"
