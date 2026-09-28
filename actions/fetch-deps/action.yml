@@ -23,7 +23,7 @@ runs:
       shell: pwsh
       run: Write-Output "::warning title=No build-deps token::nothing fetched from ${{ inputs.repository }}/${{ inputs.folder }}; the build lacks those files"
     - if: inputs.token != ''
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: ${{ inputs.repository }}
         token: ${{ inputs.token }}
