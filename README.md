@@ -43,8 +43,8 @@ A complete example is GlassLink's `.github/workflows/release.yml`.
 
 1. **build-deps token** (only if the project needs files from `build-deps`): GitHub, Settings, Developer settings,
    Fine-grained tokens, Generate new token. Resource owner: me; Repository access: only `build-deps`; Permissions:
-   Contents read-only; an expiry date. Store it in the project as the secret `BUILD_DEPS_TOKEN` (Settings, Secrets and
-   variables, Actions).
+   Contents read-only; an expiry date. Store it in the project as the **environment** secret `BUILD_DEPS_TOKEN` of the
+   `release` environment (Settings, Environments), so only the release job can read it, not ordinary CI runs.
 2. **Environment `release`** in the project (Settings, Environments): the release job runs in it. Give it a required
    reviewer (me), so nothing is signed or published without an approval, and put the signing secrets there, not in
    the repository's secrets.
